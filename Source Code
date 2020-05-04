@@ -1,0 +1,144 @@
+/* Prototype of the Mechanical Ventilation System
+ *  2020.05.3
+ * By: Mary and Vasily Goncharenko
+ * The system is based on Arduino Esplora 
+ * 
+ * System configuration:
+ * The breathing rate range is: 7-15 breaths per minute
+ * (the default breathing rate, when is slider in in the middle, is 10 breaths per minute)
+ * The inhale/exhale ratio is 40/60% respectively
+ * The output pin: 11 :)
+ * 
+ * Functionality: 
+ * Display on the screen:
+ *  1. Help on how to use the system
+ *  2. Breating Rate
+ *  3. Inhale/exhale ratio
+ * Read slider value (0-1023) and set the breathing rate 
+ * Display on RGB lED the breathing rate deviation from the default value in red light brightness.
+ * Change pin 11 HIGH/LOW based on slider value 
+ * 
+ * A. Controller components in use:
+ *  1. LCD 160x128 
+ *  2. Slider
+ *  3. RGB LED
+ *  4. Pin 11 (out)
+ * B. Additional components:
+ *  1. Arduino single relay
+ *  
+ */
+
+#include <Esplora.h>
+#include <TFT.h>
+#include <SPI.h>
+
+int oldSlider;
+float timeCounter, timeTotal, timeOn_Percent, timeTotal_Min, timeTotal_Max;
+float timeCurrent_Percent;
+int relayPin = 11;
+
+void setup() {
+  Serial.begin(9600);
+  pinMode(relayPin, OUTPUT);
+  
+  EsploraTFT.begin();
+  
+  int oldSlider = Esplora.readSlider();
+  timeCounter = 0;
+  timeTotal = 6000;     // Default full breath cycle: 6 sec - slider 512 (in range of 0-1023)
+  timeTotal_Min = 4000;  // Min full breath cycle: 4 sec
+  timeTotal_Max = 8000; // Max full breath cycle: 8 sec, 
+  timeOn_Percent = 40; // Breath On/Off ratio 40%
+  
+  EsploraTFT.background(0,0,0); 
+  EsploraTFT.stroke(255,100,100); // Neon-Blue
+  EsploraTFT.text("Mechanical Ventilation", 0, 0);
+  
+  EsploraTFT.stroke(0,255,255); // Yellow
+  EsploraTFT.text("Rate:", 80, 20);
+  
+  char rate[4];
+  dtostrf((60000.00/timeTotal), 2, 0, rate);
+  EsploraTFT.text(rate, 110, 20);
+  EsploraTFT.text("bpm", 130, 20);
+
+  EsploraTFT.stroke(200,200,100);
+  EsploraTFT.text("Use bottom", 80, 40);
+  EsploraTFT.text("slider to", 80, 52);
+  EsploraTFT.text("adjust Rate.", 80, 64);
+  EsploraTFT.text("Set to middle", 80, 76);
+  EsploraTFT.text("for default.", 80, 88);
+  
+  EsploraTFT.stroke(255,100,255);
+  EsploraTFT.text("Inhave / Exhale ratio: ", 1, 110);
+  EsploraTFT.stroke(100,255,255);
+  dtostrf((timeOn_Percent/1.00), 3, 0, rate);
+  EsploraTFT.text(rate, 130, 110);
+  EsploraTFT.text("%", 150, 110);
+
+  EsploraTFT.stroke(255,255,255); // white
+  EsploraTFT.line(0, 20, 0, 100);
+}
+
+void loop() {
+  // Reset timeCounter if > timeTotal
+  if (timeCounter > timeTotal) {
+    EsploraTFT.stroke(0,0,0); // Black
+    EsploraTFT.line(1, 20, 80, 20);
+    EsploraTFT.line(1, 100, 160, 100);
+    EsploraTFT.line(160*timeOn_Percent/100, 20, 160*timeOn_Percent/100, 100);    
+    EsploraTFT.text("", 130, 110);
+    EsploraTFT.fill(0,0,0);
+    EsploraTFT.rect(110, 20, 18, 10);    
+
+    timeCounter = 0;
+    char rate[4];
+    dtostrf((60000.00/timeTotal), 2, 0, rate);
+    EsploraTFT.stroke(0,255,255); // Yellow
+    EsploraTFT.text(rate, 110, 20);
+    EsploraTFT.stroke(100,255,255);
+    dtostrf((timeOn_Percent/1.00), 3, 0, rate);
+    EsploraTFT.text(rate, 130, 110);
+  }
+
+  // Handle inhale/exhale
+  timeCurrent_Percent = (timeCounter*100) / timeTotal;
+  if (timeCurrent_Percent < timeOn_Percent) {
+    digitalWrite(relayPin, LOW);    
+    EsploraTFT.stroke(255,255,255); // white
+    EsploraTFT.line(0, 20, 160 * timeCurrent_Percent/ 100, 20);
+  }
+  else {
+    digitalWrite(relayPin, HIGH);
+    EsploraTFT.stroke(250, 180, 10);
+    EsploraTFT.line(160*timeOn_Percent/100, 20, 160*timeOn_Percent/100, 100);
+    EsploraTFT.stroke(250, 180, 10);
+    EsploraTFT.line(160*timeOn_Percent/100, 100, 160*timeCurrent_Percent/100, 100);
+  }
+
+  int slider = Esplora.readSlider();
+
+  // convert slider reading to Red light with lowest level on slider middle:
+  byte red = abs(map(slider, 0, 1023, -255, 255));
+  Esplora.writeRGB(red, 0, 0);
+
+  // add a delay to keep the LED from flickering:
+  delay(20);
+  timeCounter += 20;
+
+  if (slider != oldSlider) {
+    oldSlider = slider;
+    timeTotal = 4000 + (4000/1000)*slider;
+
+    delay(20);
+    timeCounter += 20;
+
+    EsploraTFT.stroke(0,0,0); // Black
+    EsploraTFT.fill(0,0,0);
+    EsploraTFT.rect(110, 20, 18, 10);    
+    char rate[4];
+    EsploraTFT.stroke(0,255,255); // Yellow
+    dtostrf((60000.00/timeTotal), 2, 0, rate);
+    EsploraTFT.text(rate, 110, 20);
+  }
+}
